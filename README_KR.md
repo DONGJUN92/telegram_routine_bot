@@ -26,8 +26,8 @@
 
 | 항목 | 기술 |
 |------|------|
-| 언어 | Python 3.13 |
-| 프레임워크 | `python-telegram-bot` v20+ (비동기) |
+| 언어 | Python 3.10+ |
+| 프레임워크 | `python-telegram-bot[job-queue]` v20+ (비동기) |
 | 데이터베이스 | Google Sheets (`gspread`) |
 | AI 엔진 | Ollama (로컬) — `gemma3:1b` 모델 |
 | 스케줄러 | APScheduler (JobQueue) |

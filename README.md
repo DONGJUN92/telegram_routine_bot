@@ -26,8 +26,8 @@ Sans AI Routine Club Bot helps community members **build and maintain daily rout
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Python 3.13 |
-| Framework | `python-telegram-bot` v20+ (async) |
+| Language | Python 3.10+ |
+| Framework | `python-telegram-bot[job-queue]` v20+ (async) |
 | Database | Google Sheets via `gspread` |
 | AI Engine | Ollama (local) — `gemma3:1b` model |
 | Scheduler | APScheduler (JobQueue) |
