@@ -57,54 +57,61 @@ sans-ai-routine-bot/
 
 ---
 
-## 🚀 시작하기
+## 🚀 빠른 시작 (권장)
 
-### 사전 준비
+가장 쉬운 설정 방법은 자동화된 초기 설정 스크립트를 사용하는 것입니다:
 
+1. **저장소 클론 및 이동**
+   ```bash
+   git clone https://github.com/DONGJUN92/telegram_routine_bot.git
+   cd telegram_routine_bot
+   ```
+
+2. **가상환경 생성 및 활성화**
+   - **Windows**: 
+     ```bash
+     python -m venv .venv
+     .venv\Scripts\activate
+     ```
+   - **Mac/Linux**: 
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     ```
+
+3. **설정 스크립트 실행**
+   ```bash
+   python init_setup.py  # Mac/Linux는 python3 사용 가능
+   ```
+   *이 스크립트는 패키지 설치부터 `.env` 파일 생성, 구글 인증 파일 확인 및 연결 테스트까지 도와줍니다.*
+
+---
+
+## 🛠️ 직접 설정 (수동)
+
+### 1. 사전 준비
 - **Python 3.10+**
-- **Telegram Bot Token** — [@BotFather](https://t.me/BotFather)에서 봇 생성
-- **Google Cloud 서비스 계정** — Google Sheets API 접근용
-- **Ollama** (선택사항) — AI 기능 사용 시에만 필요
+- **Telegram Bot Token** — [@BotFather](https://t.me/BotFather)에서 생성
+- **Google Cloud 서비스 계정** — Sheets API용 JSON 키
+- **Ollama** (선택사항) — AI 기능용
 
-### 1. 저장소 클론
-
-```bash
-git clone https://github.com/<your-username>/sans-ai-routine-bot.git
-cd sans-ai-routine-bot
-```
-
-### 2. 가상환경 설정
-
+### 2. 설치 및 구성
 ```bash
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-### 3. 의존성 설치
-
-```bash
-pip install python-telegram-bot gspread python-dotenv aiohttp
-```
-
-### 4. 환경변수 설정
-
+### 3. 환경 설정
+`.env.example`을 `.env`로 복사하고 값을 입력하세요.
 ```bash
 cp .env.example .env
 ```
+`credentials.json` 파일을 루트 폴더에 준비하세요.
 
-`.env` 파일을 열어 실제 값을 입력하세요:
-
-```env
-# Telegram Bot 설정
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-GROUP_CHAT_ID=your_group_chat_id_here
-
-# Google Sheets 설정
-GOOGLE_SHEET_NAME=your_google_sheet_name_here
-GOOGLE_CREDENTIALS_FILE=credentials.json
+### 4. 봇 실행
+```bash
+python main.py
 ```
 
 ### 5. Google Sheets 설정
@@ -188,6 +195,23 @@ ollama run gemma3:1b
 - 봇 토큰, 채팅 ID → `.env` 파일에서 로드 (Git 제외)
 - Google 서비스 계정 키 → `credentials.json` (Git 제외)
 - `.env.example`으로 안전한 설정 템플릿 제공
+
+---
+
+## ❓ 문제 해결 (Troubleshooting)
+
+### Windows: 스크립트 실행 권한 오류 (Execution Policy)
+`.venv\Scripts\activate` 실행 시 오류가 발생한다면:
+1. PowerShell을 **관리자 권한**으로 실행합니다.
+2. `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` 명령어를 실행합니다.
+3. 터미널을 다시 켜고 시도해보세요.
+
+### Python 명령어를 찾을 수 없음
+- `python` 대신 `python3`를 입력해보세요.
+- Windows의 경우, Python 설치 시 "Add Python to PATH" 항목을 체크했는지 확인하세요.
+
+### Google Sheets 접근 권한 오류
+- `credentials.json` 파일 내의 `client_email` 주소를 복사하여, 사용할 구글 스프레드시트에 **편집자(Editor)** 권한으로 공유했는지 확인하세요.
 
 ---
 
