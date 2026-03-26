@@ -1,10 +1,16 @@
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
+from zoneinfo import ZoneInfo
 import random
 import uuid
+import warnings
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.warnings import PTBUserWarning
+
+# PTB UserWarning 무시 (ConversationHandler + CallbackQueryHandler 관련)
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, 
     ContextTypes, CallbackQueryHandler, ConversationHandler
@@ -199,6 +205,7 @@ async def reg_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await async_append_row(routines_sheet, [routine_id, user_id, routine_name, category, frequency, "active", now, 0])
     
     await query.edit_message_text(f"🎉 환영합니다! [{nickname}]님이 새로운 루틴 여정을 시작했습니다!\n목표: {routine_name}\n카테고리: {category}\n빈도: {frequency}\n모두 박수로 환영해주세요! 👏")
+    print(f"👤 [루틴 등록] {nickname} ({user_id}): {routine_name} / {frequency}")
     
     # 그룹 채팅방 공유 (V2 추가)
     try:
@@ -286,6 +293,9 @@ async def process_auth(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     else:
         await update.message.reply_text(reply_msg, reply_to_message_id=update.message.message_id)
         user_obj = update.message.from_user
+    
+    nickname = user_obj.first_name or user_obj.username or "회원"
+    print(f"✅ [루틴 인증] {nickname} ({user_id}): {routine_name} (오늘 {current_count}번째)")
 
     # 그룹 채팅방 공유 (V2 추가)
     try:
@@ -641,7 +651,6 @@ async def show_rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================================
 async def morning_job(context: ContextTypes.DEFAULT_TYPE):
     """매일 KST 09:00 (UTC 00:00)에 그룹방에 아침 시작 메시지를 발송합니다."""
-    print("🌅 아침 시작 메시지 스케줄이 동작했습니다.")
     if not GROUP_CHAT_ID:
         print("⚠️ GROUP_CHAT_ID가 설정되지 않아 아침 메시지를 발송하지 않습니다.")
         return
@@ -658,9 +667,7 @@ async def morning_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def evening_job(context: ContextTypes.DEFAULT_TYPE):
     """매일 KST 21:00 (UTC 12:00)에 그룹방에 저녁 마무리 메시지를 발송합니다."""
-    print("🌙 저녁 마무리 메시지 스케줄이 동작했습니다.")
     if not GROUP_CHAT_ID:
-        print("⚠️ GROUP_CHAT_ID가 설정되지 않아 저녁 메시지를 발송하지 않습니다.")
         return
     msg = (
         "🌙 오늘 하루도 정말 고생 많으셨어요!\n\n"
@@ -692,7 +699,6 @@ async def test_evening(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def initialize_weekly_achievement(context: ContextTypes.DEFAULT_TYPE):
     """매주 월요일 00:01 KST(UTC 일요일 15:01)에 실행: 모든 활성 루틴을 주간 달성률 시트에 미리 등록합니다."""
-    print("📅 주간 달성률 초기화 스케줄이 동작했습니다.")
     week_id, week_start_str = get_current_week_info()
     
     try:
@@ -754,7 +760,6 @@ async def test_init_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def weekly_top_job(context: ContextTypes.DEFAULT_TYPE):
     """매주 일요일 KST 12:00 (UTC 03:00)에 이번 주 TOP 3 루틴 인증자를 그룹방에 발송합니다."""
-    print("🏆 주간 TOP 3 리더보드 스케줄이 동작했습니다.")
     if not GROUP_CHAT_ID:
         print("⚠️ GROUP_CHAT_ID가 설정되지 않아 주간 리더보드를 발송하지 않습니다.")
         return
@@ -842,8 +847,6 @@ async def monthly_rec_job(context: ContextTypes.DEFAULT_TYPE, target_user_id: st
     target_user_id 지정 시 해당 유저에게만, 없으면 전체 루틴 등록 멤버 대상.
     절대 GROUP_CHAT_ID에 발송하지 않음.
     """
-    mode = f"[{target_user_id}]" if target_user_id else "[전체 멤버]"
-    print(f"[AI 추천] 월간 루틴 추천 시작 {mode}")
     
     try:
         users_records = await asyncio.to_thread(users_sheet.get_all_values)
@@ -933,6 +936,8 @@ def main():
             CHOOSING_FREQUENCY: [CallbackQueryHandler(reg_frequency, pattern='^(everyday|weekdays|3times|1time)$')]
         },
         fallbacks=[CommandHandler('cancel', cancel_reg)],
+        per_chat=True,
+        per_user=True,
         per_message=False
     )
 
@@ -955,19 +960,23 @@ def main():
 
     # 스케줄러 등록
     jq = app.job_queue
-    from datetime import time
-    t_morning = time(hour=0, minute=0, second=0)   # UTC 00:00 = KST 09:00
-    jq.run_daily(morning_job, t_morning)
-    t_evening = time(hour=12, minute=0, second=0)  # UTC 12:00 = KST 21:00
-    jq.run_daily(evening_job, t_evening)
-    t_monthly_rec = time(hour=3, minute=0, second=0)  # UTC 03:00 = KST 12:00 (매월 15일)
-    jq.run_monthly(monthly_rec_job, when=t_monthly_rec, day=15)
-    t_weekly = time(hour=3, minute=0, second=0)    # UTC 03:00 = KST 12:00 (매주 일요일)
-    jq.run_daily(weekly_top_job, t_weekly, days=(6,))  # 6 = 일요일(Sunday)
-
-    # 주간 초기화 스케줄러 (매주 월요일 00:01 KST = UTC 일요일 15:01)
-    t_init = time(hour=15, minute=1, second=0)
-    jq.run_daily(initialize_weekly_achievement, t_init, days=(6,)) # 6 = 일요일(UTC 기준이므로 일요일 15:01이 월요일 00:01)
+    kst = ZoneInfo("Asia/Seoul")
+    
+    # 🌅 아침 메시지 (KST 09:00)
+    jq.run_daily(morning_job, time(hour=9, minute=0, second=0, tzinfo=kst))
+    
+    # 🌙 저녁 메시지 (KST 21:00)
+    jq.run_daily(evening_job, time(hour=21, minute=0, second=0, tzinfo=kst))
+    
+    # 💡 AI 추천 (매월 15일 KST 12:00)
+    jq.run_monthly(monthly_rec_job, when=time(hour=12, minute=0, second=0, tzinfo=kst), day=15)
+    
+    # 🏆 주간 TOP 3 (매주 일요일 KST 12:00)
+    jq.run_daily(weekly_top_job, time(hour=12, minute=0, second=0, tzinfo=kst), days=(6,))
+    
+    # 📅 주간 초기화 (매주 월요일 KST 00:01)
+    # KST 기준 월요일(0) 00:01
+    jq.run_daily(initialize_weekly_achievement, time(hour=0, minute=1, second=0, tzinfo=kst), days=(0,))
 
 
     print("🤖 인사이트 루틴 랩 V2 봇 가동 시작! (비동기, 랭킹, JobQueue 장착 완료)")
