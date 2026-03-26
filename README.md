@@ -26,8 +26,8 @@ Sans AI Routine Club Bot helps community members **build and maintain daily rout
 
 | Component | Technology |
 |-----------|-----------|
-| Language | Python 3.13 |
-| Framework | `python-telegram-bot` v20+ (async) |
+| Language | Python 3.10+ |
+| Framework | `python-telegram-bot[job-queue]` v20+ (async) |
 | Database | Google Sheets via `gspread` |
 | AI Engine | Ollama (local) — `gemma3:1b` model |
 | Scheduler | APScheduler (JobQueue) |
@@ -57,23 +57,43 @@ sans-ai-routine-bot/
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quick Start (Recommended)
 
-### Prerequisites
+The easiest way to set up the bot is to use the interactive setup script:
 
+1. **Clone & Enter the Repository**
+   ```bash
+   git clone https://github.com/DONGJUN92/telegram_routine_bot.git
+   cd telegram_routine_bot
+   ```
+
+2. **Create & Activate Virtual Environment**
+   - **Windows**: 
+     ```bash
+     python -m venv .venv
+     .venv\Scripts\activate
+     ```
+   - **Mac/Linux**: 
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     ```
+
+3. **Run the Setup Script**
+   ```bash
+   python init_setup.py  # Use python3 if on Mac/Linux
+   ```
+   *This script will automatically install dependencies, help you create a `.env` file, and verify your credentials.*
+
+---
+
+## 🛠️ Manual Setup (Alternative)
+
+### 1. Prerequisites
 - **Python 3.10+**
-- **Telegram Bot Token** — Create a bot via [@BotFather](https://t.me/BotFather)
-- **Google Cloud Service Account** — For Google Sheets API access
-- **Ollama** (optional) — Required only for AI features
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/<your-username>/sans-ai-routine-bot.git
-cd sans-ai-routine-bot
-```
-
-### 2. Set Up Virtual Environment
+- **Telegram Bot Token** — Create via [@BotFather](https://t.me/BotFather)
+- **Google Cloud Service Account** — For Sheets API
+- **Ollama** (optional) — For AI features
 
 To prevent library conflicts, it is highly recommended to use a virtual environment.
 
@@ -95,7 +115,7 @@ Install the required Python packages inside the activated virtual environment.
 *(Note: `tzdata` is recommended to ensure `ZoneInfo` works flawlessly across Windows/Linux).*
 
 ```bash
-pip install python-telegram-bot gspread python-dotenv aiohttp tzdata
+pip install python-telegram-bot[job-queue] gspread python-dotenv aiohttp tzdata
 ```
 
 ### 4. Configure Environment Variables
@@ -106,6 +126,7 @@ The bot uses `.env` files to securely manage tokens without exposing them in the
 # Copy the template to create your actual .env file
 cp .env.example .env
 ```
+Ensure `credentials.json` (Google Cloud key) is in the root directory.
 
 Open `.env` in a text editor and fill in your actual values:
 
@@ -205,6 +226,24 @@ All sensitive credentials are managed via environment variables:
 - Bot tokens and chat IDs are loaded from `.env` (excluded from Git)
 - Google service account keys are stored in `credentials.json` (excluded from Git)
 - `.env.example` provides a safe template for new users
+
+---
+
+## ❓ Troubleshooting
+
+### Windows: Scripts are disabled (Execution Policy)
+If you get an error when running `.venv\Scripts\activate`:
+1. Open PowerShell as **Administrator**.
+2. Run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+3. Restart your terminal and try again.
+
+### Python command not found
+- Try using `python3` instead of `python`.
+- If on Windows, ensure "Add Python to PATH" was checked during installation.
+
+### Google Sheets Access Denied
+- Make sure you shared your Spreadsheet with the `client_email` found inside your `credentials.json` file.
+- The service account must have **Editor** permissions.
 
 ---
 

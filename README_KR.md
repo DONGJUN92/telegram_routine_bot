@@ -26,8 +26,8 @@
 
 | 항목 | 기술 |
 |------|------|
-| 언어 | Python 3.13 |
-| 프레임워크 | `python-telegram-bot` v20+ (비동기) |
+| 언어 | Python 3.10+ |
+| 프레임워크 | `python-telegram-bot[job-queue]` v20+ (비동기) |
 | 데이터베이스 | Google Sheets (`gspread`) |
 | AI 엔진 | Ollama (로컬) — `gemma3:1b` 모델 |
 | 스케줄러 | APScheduler (JobQueue) |
@@ -57,23 +57,41 @@ sans-ai-routine-bot/
 
 ---
 
-## 🚀 시작하기
+## 🚀 빠른 시작 (권장)
 
-### 사전 준비
+가장 쉬운 설정 방법은 자동화된 초기 설정 스크립트를 사용하는 것입니다:
 
+1. **저장소 클론 및 이동**
+   ```bash
+   git clone https://github.com/DONGJUN92/telegram_routine_bot.git
+   cd telegram_routine_bot
+   ```
+
+2. **가상환경 생성 및 활성화**
+   - **Windows**: 
+     ```bash
+     python -m venv .venv
+     .venv\Scripts\activate
+     ```
+   - **Mac/Linux**: 
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     ```
+
+3. **설정 스크립트 실행**
+   ```bash
+   python init_setup.py  # Mac/Linux는 python3 사용 가능
+   ```
+   *이 스크립트는 패키지 설치부터 `.env` 파일 생성, 구글 인증 파일 확인 및 연결 테스트까지 도와줍니다.*
+
+---
+
+## 🛠️ 직접 설정 (수동)
+
+### 1. 사전 준비
 - **Python 3.10+**
-- **Telegram Bot Token** — [@BotFather](https://t.me/BotFather)에서 봇 생성
-- **Google Cloud 서비스 계정** — Google Sheets API 접근용
-- **Ollama** (선택사항) — AI 기능 사용 시에만 필요
-
-### 1. 저장소 클론 (Clone)
-
-```bash
-git clone https://github.com/<your-username>/sans-ai-routine-bot.git
-cd sans-ai-routine-bot
-```
-
-### 2. 가상환경 설정 (가상환경 사용을 강력히 권장합니다.)
+가상환경 사용을 강력히 권장합니다.
 
 **Windows의 경우:**
 ```cmd
@@ -93,18 +111,19 @@ source .venv/bin/activate
 *(참고: `tzdata`는 윈도우/리눅스 환경 관계없이 `ZoneInfo` 시간대능이 안정적으로 동작하게 해줍니다.)*
 
 ```bash
-pip install python-telegram-bot gspread python-dotenv aiohttp tzdata
+pip install python-telegram-bot[job-queue] gspread python-dotenv aiohttp tzdata
 ```
 
-### 4. 환경변수(.env) 설정
+### 4. 환경 설정
 
 봇 토큰 등 중요 정보를 소스코드에 노출시키지 않기 위해 `.env` 파일을 사용합니다.
 
 ```bash
-# 템플릿 파일을 복사하여 실제 환경변수 파일 생성
-copy .env.example .env  # Windows
-# cp .env.example .env  # macOS/Linux
+# 템플릿 파일을 복사하여 실제 환경변수 파일 생성 (Windows)
+copy .env.example .env
+# macOS/Linux의 경우: cp .env.example .env
 ```
+`credentials.json` 파일을 루트 폴더에 준비하세요.
 
 생성된 `.env` 파일을 열어 실제 발급받은 값을 입력하세요:
 
@@ -203,6 +222,23 @@ ollama run gemma3:1b
 - 봇 토큰, 채팅 ID → `.env` 파일에서 로드 (Git 제외)
 - Google 서비스 계정 키 → `credentials.json` (Git 제외)
 - `.env.example`으로 안전한 설정 템플릿 제공
+
+---
+
+## ❓ 문제 해결 (Troubleshooting)
+
+### Windows: 스크립트 실행 권한 오류 (Execution Policy)
+`.venv\Scripts\activate` 실행 시 오류가 발생한다면:
+1. PowerShell을 **관리자 권한**으로 실행합니다.
+2. `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` 명령어를 실행합니다.
+3. 터미널을 다시 켜고 시도해보세요.
+
+### Python 명령어를 찾을 수 없음
+- `python` 대신 `python3`를 입력해보세요.
+- Windows의 경우, Python 설치 시 "Add Python to PATH" 항목을 체크했는지 확인하세요.
+
+### Google Sheets 접근 권한 오류
+- `credentials.json` 파일 내의 `client_email` 주소를 복사하여, 사용할 구글 스프레드시트에 **편집자(Editor)** 권한으로 공유했는지 확인하세요.
 
 ---
 
