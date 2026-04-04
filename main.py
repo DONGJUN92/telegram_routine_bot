@@ -6,7 +6,7 @@ import random
 import uuid
 import warnings
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, Message, CallbackQuery
 from telegram.warnings import PTBUserWarning
 
 # PTB UserWarning 무시 (ConversationHandler + CallbackQueryHandler 관련)
@@ -21,7 +21,12 @@ from db_utils import (
     async_row_values, async_cell, users_sheet, routines_sheet, logs_sheet, insights_sheet, ai_recommendations_sheet,
     weekly_achievement_sheet
 )
-from ai_utils import generate_insight_keywords, generate_routine_recommendation
+from ai_utils import (
+    ensure_ollama_ready,
+    generate_insight_keywords,
+    generate_routine_recommendation,
+    generate_weekly_insight_briefing,
+)
 
 load_dotenv()
 
@@ -36,6 +41,152 @@ CHOOSING_FREQUENCY = 2
 
 # 메모리 캐시
 daily_auth_count = {"date": "", "count": 0}
+
+# 터미널 출력 로깅 패치 상태
+_OUTPUT_LOG_PATCHED = False
+
+def _clip_log_text(value, limit: int = 240) -> str:
+    if value is None:
+        return ""
+    text = str(value).replace("\n", "\\n")
+    return text if len(text) <= limit else text[:limit] + "...(truncated)"
+
+def sanitize_ai_briefing_text(text: str) -> str:
+    """AI 브리핑에서 금지 문법(헤더/코드블록)만 제거하고 가독성 줄바꿈은 보존합니다."""
+    if not text:
+        return ""
+
+    cleaned_lines = []
+    prev_blank = False
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+
+        if not stripped:
+            if cleaned_lines and not prev_blank:
+                cleaned_lines.append("")
+                prev_blank = True
+            continue
+
+        if stripped.startswith("```"):
+            continue
+
+        while stripped.startswith("#"):
+            stripped = stripped[1:].lstrip()
+
+        if not stripped:
+            continue
+
+        cleaned_lines.append(stripped)
+        prev_blank = False
+
+    return "\n".join(cleaned_lines).strip()
+
+def terminal_log(direction: str, event_type: str, **fields):
+    """입/출력 이벤트를 터미널에 일관된 형식으로 기록합니다."""
+    ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M:%S")
+    payload = " | ".join(
+        f"{k}={_clip_log_text(v)}" for k, v in fields.items() if v is not None and v != ""
+    )
+    print(f"[{ts}] [{direction}] [{event_type}] {payload}")
+
+async def log_incoming_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """들어오는 Update(명령어/메시지/콜백)를 공통 로깅합니다."""
+    try:
+        if update.message:
+            msg = update.message
+            if msg.text and msg.text.startswith("/"):
+                event_type = "command"
+                content = msg.text
+            elif msg.photo:
+                event_type = "photo"
+                content = msg.caption or "<photo-no-caption>"
+            else:
+                event_type = "message"
+                content = msg.text or msg.caption or "<non-text-message>"
+
+            terminal_log(
+                "IN",
+                event_type,
+                update_id=update.update_id,
+                user_id=msg.from_user.id if msg.from_user else None,
+                chat_id=msg.chat_id,
+                chat_type=msg.chat.type if msg.chat else None,
+                content=content,
+            )
+            return
+
+        if update.callback_query:
+            query = update.callback_query
+            terminal_log(
+                "IN",
+                "callback_query",
+                update_id=update.update_id,
+                user_id=query.from_user.id if query.from_user else None,
+                chat_id=query.message.chat_id if query.message else None,
+                data=query.data,
+            )
+            return
+
+        terminal_log("IN", "other_update", update_id=update.update_id)
+    except Exception as e:
+        print(f"입력 로깅 에러: {e}")
+
+def install_terminal_output_logging():
+    """Bot 출력 API를 패치해 모든 발송 메시지를 터미널에 로깅합니다."""
+    global _OUTPUT_LOG_PATCHED
+    if _OUTPUT_LOG_PATCHED:
+        return
+
+    original_send_message = Bot.send_message
+    original_reply_text = Message.reply_text
+    original_edit_message_text = CallbackQuery.edit_message_text
+    original_callback_answer = CallbackQuery.answer
+
+    async def logged_send_message(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        text = kwargs.get("text", args[1] if len(args) > 1 else "")
+        terminal_log("OUT", "send_message", chat_id=chat_id, content=text)
+        return await original_send_message(self, *args, **kwargs)
+
+    async def logged_reply_text(self, *args, **kwargs):
+        text = kwargs.get("text", args[0] if args else "")
+        terminal_log(
+            "OUT",
+            "reply_text",
+            chat_id=self.chat_id,
+            user_id=self.from_user.id if self.from_user else None,
+            content=text,
+        )
+        return await original_reply_text(self, *args, **kwargs)
+
+    async def logged_edit_message_text(self, *args, **kwargs):
+        text = kwargs.get("text", args[0] if args else "")
+        terminal_log(
+            "OUT",
+            "edit_message_text",
+            chat_id=self.message.chat_id if self.message else None,
+            user_id=self.from_user.id if self.from_user else None,
+            content=text,
+        )
+        return await original_edit_message_text(self, *args, **kwargs)
+
+    async def logged_callback_answer(self, *args, **kwargs):
+        text = kwargs.get("text", args[0] if args else "")
+        terminal_log(
+            "OUT",
+            "callback_answer",
+            user_id=self.from_user.id if self.from_user else None,
+            data=self.data,
+            content=text,
+        )
+        return await original_callback_answer(self, *args, **kwargs)
+
+    Bot.send_message = logged_send_message
+    Message.reply_text = logged_reply_text
+    CallbackQuery.edit_message_text = logged_edit_message_text
+    CallbackQuery.answer = logged_callback_answer
+    _OUTPUT_LOG_PATCHED = True
 
 def get_weekly_target(frequency: str) -> int:
     """target_frequency 문자열을 주간 목표 횟수(정수)로 변환합니다."""
@@ -133,7 +284,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /start - 봇 시작 및 기본 안내 확인\n"
         "🔹 /reg [루틴이름] - 새로운 루틴 목표 등록\n"
         "🔹 /status - 나의 루틴 인증 현황 모니터링\n"
-        "🔹 /insight [내용] - 50자 이상 인사이트 공유\n"
+        "🔹 /insight [내용] - 인사이트 공유\n"
         "🔹 /del - 등록된 루틴 삭제\n"
         "🔹 /rank - 명예의 전당 (포인트 랭킹 확인) 🏆\n"
         "📸 **단일 인증** - 사진을 업로드하고 캡션에 내용을 적어 전송!\n\n"
@@ -414,9 +565,9 @@ async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.replace("/insight", "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if len(text) < 50:
+    if not text:
         await update.message.reply_text(
-            f"💡 좋은 인사이트네요! 50자를 넘겨주시면 15포인트를 드립니다.\n(현재 글자수: {len(text)}자)",
+            "💡 인사이트 내용을 함께 입력해주세요!\n예) /insight 오늘 루틴에서 느낀 점",
             reply_to_message_id=update.message.message_id
         )
         return
@@ -444,10 +595,8 @@ async def insight(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 그룹 채팅방 공유 (V2 추가)
         try:
-            # 인사이트 내용이 너무 길면 자르기
-            summary = text if len(text) <= 50 else text[:50] + "..."
-            group_msg = f"💡 **{user_name}**님이 새로운 인사이트를 공유했습니다!\n\n\"{summary}\"\n\n훌륭한 배움입니다! 🚀"
-            await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=group_msg, parse_mode='Markdown')
+            group_msg = f"💡 {user_name}님이 새로운 인사이트를 공유했습니다!\n\n\"{text}\"\n\n훌륭한 배움입니다! 🚀"
+            await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=group_msg)
         except Exception as e:
             print(f"그룹 공유 에러 (인사이트): {e}")
 
@@ -830,7 +979,7 @@ async def weekly_top_job(context: ContextTypes.DEFAULT_TYPE):
             f"🌟 이번주 총 {total_weekly_auths}개의 루틴 인증이 진행되었습니다!\n"
             f"모두 정말 고생 많으셨어요, 앞으로도 함께 파이팅! 💪🔥\n\n"
             f"이번 주 루틴을 통해 어떤 변화나 인사이트를 느끼셨나요? 💡\n"
-            f"/insight 명령어로 50자 이상 공유해주시면 포인트를 드립니다!"
+            f"/insight 명령어로 공유해주시면 포인트를 드립니다!"
         )
         await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=msg)
     except Exception as e:
@@ -841,6 +990,80 @@ async def test_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ 이번 주 TOP 3 집계 중입니다...")
     await weekly_top_job(context)
     await update.message.reply_text("✅ 주간 TOP 3 발송 테스트 완료!")
+
+async def test_insight_briefing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """테스트용: 주간 인사이트 AI 브리핑 스케줄러를 즉시 실행합니다."""
+    await update.message.reply_text("⏳ 주간 인사이트 AI 브리핑 생성 중입니다...")
+    await weekly_insight_briefing_job(context)
+    await update.message.reply_text("✅ 주간 인사이트 AI 브리핑 발송 테스트 완료!")
+
+async def weekly_insight_briefing_job(context: ContextTypes.DEFAULT_TYPE):
+    """매주 일요일 KST 12:05에 이번 주 인사이트를 AI로 브리핑해 그룹방에 발송합니다."""
+    if not GROUP_CHAT_ID:
+        print("⚠️ GROUP_CHAT_ID가 설정되지 않아 인사이트 브리핑을 발송하지 않습니다.")
+        return
+
+    try:
+        now = datetime.now()
+        week_start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        insights_records = await asyncio.to_thread(insights_sheet.get_all_values)
+        if len(insights_records) <= 1:
+            print("이번 주 인사이트 없음 — 브리핑 발송 생략")
+            return
+
+        users_records = await asyncio.to_thread(users_sheet.get_all_values)
+        uid_to_nickname = {}
+        for row in users_records[1:]:
+            if row and len(row) >= 2:
+                uid_to_nickname[str(row[0])] = row[1] or "회원"
+
+        collected = []
+        for row in insights_records[1:]:
+            if len(row) < 4:
+                continue
+            try:
+                insight_time = datetime.strptime(row[2][:19], "%Y-%m-%d %H:%M:%S")
+            except (ValueError, IndexError):
+                continue
+            if insight_time < week_start:
+                continue
+
+            uid = str(row[1]) if len(row) > 1 else ""
+            nickname = uid_to_nickname.get(uid, "회원")
+            content = row[3].strip() if len(row) > 3 and row[3] else ""
+            if not content:
+                continue
+
+            # LLM 입력 길이 폭주를 막기 위해 항목당 길이를 제한합니다.
+            clipped_content = content if len(content) <= 300 else content[:300] + "..."
+            collected.append(
+                f"- ({insight_time.strftime('%m-%d %H:%M')}) {nickname}: {clipped_content}"
+            )
+
+        if not collected:
+            print("이번 주 인사이트 없음 — 브리핑 발송 생략")
+            return
+
+        insights_text = "\n".join(collected[:80])
+        briefing_text = await generate_weekly_insight_briefing(insights_text)
+        if not briefing_text:
+            print("주간 인사이트 브리핑 생성 실패 — 발송 생략")
+            return
+
+        briefing_text = sanitize_ai_briefing_text(briefing_text)
+
+        if len(briefing_text) > 3500:
+            briefing_text = briefing_text[:3500] + "\n..."
+
+        msg = (
+            "🧠 **이번 주 인사이트 AI 브리핑**\n\n"
+            f"{briefing_text}\n\n"
+            "👉 다음 브리핑의 주인공은 당신입니다. /insight 로 이번 주 배움을 한 줄 남겨주세요! 🌱"
+        )
+        await context.bot.send_message(chat_id=GROUP_CHAT_ID, text=msg, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Weekly Insight Briefing Job Error: {e}")
     
 async def monthly_rec_job(context: ContextTypes.DEFAULT_TYPE, target_user_id: str = None):
     """매월 15일 KST 12:00에 실행: 루틴 등록 멤버에게 개별 DM으로 AI 루틴 추천.
@@ -926,7 +1149,31 @@ async def monthly_rec_job(context: ContextTypes.DEFAULT_TYPE, target_user_id: st
         print(f"Monthly Rec Job Error: {e}")
 
 def main():
+    install_terminal_output_logging()
+
+    auto_start_ollama = os.environ.get("AUTO_START_OLLAMA", "true").lower() in ("1", "true", "yes", "y")
+    wait_seconds_str = os.environ.get("OLLAMA_STARTUP_WAIT_SECONDS", "20")
+    try:
+        startup_wait_seconds = int(wait_seconds_str)
+    except ValueError:
+        startup_wait_seconds = 20
+
+    if auto_start_ollama:
+        print("🤖 Ollama 자동 준비를 확인합니다...")
+        try:
+            ollama_ready = asyncio.run(ensure_ollama_ready(wait_seconds=startup_wait_seconds))
+            if ollama_ready:
+                print("✅ Ollama 준비 완료")
+            else:
+                print("⚠️ Ollama 자동 준비에 실패했습니다. 봇은 계속 실행되며 AI 기능만 제한될 수 있습니다.")
+        except Exception as e:
+            print(f"⚠️ Ollama 자동 준비 중 에러: {e}")
+
     app = Application.builder().token(TOKEN).build()
+
+    # 입력 로깅 핸들러: 모든 텍스트/사진/콜백 입력을 선행 로깅합니다.
+    app.add_handler(MessageHandler(filters.ALL, log_incoming_update), group=-1)
+    app.add_handler(CallbackQueryHandler(log_incoming_update), group=-1)
 
     # 등록 Conversation
     conv_handler = ConversationHandler(
@@ -951,6 +1198,7 @@ def main():
     app.add_handler(CommandHandler("testmorning", test_morning))
     app.add_handler(CommandHandler("testevening", test_evening))
     app.add_handler(CommandHandler("testweekly", test_weekly))
+    app.add_handler(CommandHandler("testinsightbrief", test_insight_briefing))
     app.add_handler(CommandHandler("testinitweekly", test_init_weekly))
     app.add_handler(conv_handler)
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
@@ -973,6 +1221,9 @@ def main():
     
     # 🏆 주간 TOP 3 (매주 일요일 KST 12:00)
     jq.run_daily(weekly_top_job, time(hour=12, minute=0, second=0, tzinfo=kst), days=(6,))
+
+    # 🧠 주간 인사이트 AI 브리핑 (매주 일요일 KST 12:05)
+    jq.run_daily(weekly_insight_briefing_job, time(hour=12, minute=5, second=0, tzinfo=kst), days=(6,))
     
     # 📅 주간 초기화 (매주 월요일 KST 00:01)
     # KST 기준 월요일(0) 00:01

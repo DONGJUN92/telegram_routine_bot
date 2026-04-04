@@ -29,7 +29,7 @@ Sans AI Routine Club Bot helps community members **build and maintain daily rout
 | Language | Python 3.10+ |
 | Framework | `python-telegram-bot[job-queue]` v20+ (async) |
 | Database | Google Sheets via `gspread` |
-| AI Engine | Ollama (local) — `gemma3:1b` model |
+| AI Engine | Ollama (local) — `gemma4:e2b` model |
 | Scheduler | APScheduler (JobQueue) |
 | Config | `python-dotenv` for environment variables |
 
@@ -209,7 +209,7 @@ python main.py
 AI features require [Ollama](https://ollama.ai) running locally:
 
 ```bash
-ollama run gemma3:1b
+ollama run gemma4:e2b
 ```
 
 - **Keyword Extraction**: Automatically extracts 3 keywords from insight submissions

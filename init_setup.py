@@ -78,9 +78,10 @@ def check_credentials():
 
 def check_ollama():
     print("\n[4] AI 기능(Ollama) 확인")
-    print("💡 이 봇은 로컬 AI 모델(gemma3:1b)을 사용합니다.")
-    print("💡 Ollama가 설치되어 있고, 'ollama run gemma3:1b'가 가능한 상태여야 합니다.")
-    print("❓ Ollama가 설치되어 있나요? (설치: https://ollama.com)")
+    print("💡 이 봇은 로컬 AI 모델(gemma4:e2b)을 사용합니다.")
+    print("💡 main.py 실행 시 Ollama 서버를 자동 확인하고 필요하면 자동 실행을 시도합니다.")
+    print("💡 별도 터미널에서 'ollama run ...'을 수동 실행할 필요는 없습니다.")
+    print("❓ Ollama가 설치되어 있고, 터미널에서 'ollama' 명령이 인식되나요? (설치: https://ollama.com)")
 
 def main():
     print_banner()

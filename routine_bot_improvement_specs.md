@@ -17,7 +17,7 @@
 | 언어 | Python 3.13 |
 | 프레임워크 | `python-telegram-bot` v20+ (비동기 기반) |
 | 데이터베이스 | Google Sheets (gspread) |
-| AI 엔진 | Ollama (로컬) — `gemma3:1b` 모델 |
+| AI 엔진 | Ollama (로컬) — `gemma4:e2b` 모델 |
 | 스케줄러 | APScheduler (JobQueue) |
 
 ---
@@ -136,7 +136,7 @@
 
 - `/insight [내용]` — 50자 이상 작성 시 **+15포인트 + 방어권 1개** 지급
 - AI가 백그라운드에서 **키워드 3개를 자동 추출**하여 Insights 시트 F열에 기록
-- AI 키워드 추출에는 Ollama(`gemma3:1b`) 사용
+- AI 키워드 추출에는 Ollama(`gemma4:e2b`) 사용
 
 ### 4-4. 주차별 달성률 아카이빙
 - **목적**: 매주 인증 현황을 초기화하지 않고 과거 기록을 데이터베이스화하여 관리
@@ -249,7 +249,7 @@ SHEET_NAME = "(산스 AI클럽)루틴클럽"  # 구글 시트 이름
 `ai_utils.py`:
 ```python
 OLLAMA_API_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = "gemma3:1b"
+MODEL_NAME = "gemma4:e2b"
 ```
 
 ---
@@ -279,7 +279,7 @@ MODEL_NAME = "gemma3:1b"
 **Q4. `/testrec` 실행 시 아무 메시지도 오지 않습니다.**
 
 > **A.** 두 가지를 확인해주세요:
-> 1. **Ollama가 실행 중인지 확인** — `ollama run gemma3:1b` 또는 Ollama 앱이 켜져 있어야 AI 추천이 생성됩니다.
+> 1. **Ollama가 실행 중인지 확인** — `ollama run gemma4:e2b` 또는 Ollama 앱이 켜져 있어야 AI 추천이 생성됩니다.
 > 2. **본인이 루틴을 등록(active 상태)했는지 확인** — 활성 루틴이 없는 멤버는 추천 대상에서 제외됩니다.
 > 3. **봇과 1:1 대화를 시작했는지 확인** — 봇을 차단하거나 1:1 채팅을 한 번도 시작하지 않은 경우 DM 발송에 실패합니다.
 
@@ -299,7 +299,7 @@ MODEL_NAME = "gemma3:1b"
 
 **Q7. AI 루틴 추천이 기존에 하고 있는 루틴과 똑같이 나옵니다.**
 
-> **A.** AI가 현재 루틴 목록을 참고하여 다른 루틴을 추천하도록 설계되어 있으나, `gemma3:1b` 소형 모델의 한계로 완벽하지 않을 수 있습니다. 더 정확한 추천을 원하신다면 `ai_utils.py`의 `MODEL_NAME`을 더 큰 모델(예: `gemma3:4b`)로 변경하는 것을 검토해보세요.
+> **A.** AI가 현재 루틴 목록을 참고하여 다른 루틴을 추천하도록 설계되어 있으나, `gemma4:e2b` 모델의 한계로 완벽하지 않을 수 있습니다. 더 정확한 추천을 원하신다면 `ai_utils.py`의 `MODEL_NAME`을 더 큰 모델(예: `gemma3:4b`)로 변경하는 것을 검토해보세요.
 
 ---
 
@@ -315,4 +315,4 @@ MODEL_NAME = "gemma3:1b"
 
 
 $env:Path += ";C:\Users\DONGJUN SHIN\AppData\Local\Programs\Ollama"
-ollama run gemma3:1b
+ollama run gemma4:e2b
