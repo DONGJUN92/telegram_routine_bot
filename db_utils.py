@@ -16,6 +16,7 @@ logs_sheet = doc.worksheet('Logs')
 insights_sheet = doc.worksheet('Insights')
 ai_recommendations_sheet = doc.worksheet('AI_Recommendations')
 weekly_achievement_sheet = doc.worksheet('Weekly_Achievement')
+attendance_sheet = doc.worksheet('출석률')
 
 async def async_find_in_col(sheet, query, column=1):
     def _find():
