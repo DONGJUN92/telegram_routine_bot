@@ -7,25 +7,40 @@
 """
 
 import os
-import textwrap
+import re
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 # ============================
-# 설정
+# 설정 (환경변수 오버라이드 및 멀티플랫폼 폴백 지원)
 # ============================
-BG_IMAGE_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "assests",
-    "ChatGPT Image 2026년 5월 26일 오후 01_42_19.png",
+_BASE_DIR = os.path.dirname(__file__)
+_DEFAULT_BG_CANDIDATES = (
+    os.environ.get("CARD_BG_IMAGE_PATH", ""),
+    os.path.join(_BASE_DIR, "assets", "card_bg.png"),
+    os.path.join(_BASE_DIR, "assests", "ChatGPT Image 2026년 5월 26일 오후 01_42_19.png"),
 )
+BG_IMAGE_PATH = next((p for p in _DEFAULT_BG_CANDIDATES if p and os.path.exists(p)), _DEFAULT_BG_CANDIDATES[-1])
 
 CARD_WIDTH = 1080
 CARD_HEIGHT = 1080
 
-# 폰트 경로 (Windows 기본 맑은 고딕)
-FONT_BOLD_PATH = "C:/Windows/Fonts/malgunbd.ttf"
-FONT_REGULAR_PATH = "C:/Windows/Fonts/malgun.ttf"
+_FONT_BOLD_CANDIDATES = (
+    os.environ.get("CARD_FONT_BOLD_PATH", ""),
+    "C:/Windows/Fonts/malgunbd.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+)
+_FONT_REGULAR_CANDIDATES = (
+    os.environ.get("CARD_FONT_REGULAR_PATH", ""),
+    "C:/Windows/Fonts/malgun.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+)
+FONT_BOLD_PATH = next((p for p in _FONT_BOLD_CANDIDATES if p and os.path.exists(p)), "C:/Windows/Fonts/malgunbd.ttf")
+FONT_REGULAR_PATH = next((p for p in _FONT_REGULAR_CANDIDATES if p and os.path.exists(p)), "C:/Windows/Fonts/malgun.ttf")
 
 # 색상 팔레트
 COLOR_WHITE = (255, 255, 255, 255)
@@ -35,35 +50,49 @@ COLOR_ACCENT = (200, 180, 255, 255)  # 연보라 (배경과 어울리는)
 COLOR_HIGHLIGHT = (255, 220, 120, 255)  # 골드 강조
 COLOR_SOFT_WHITE = (220, 220, 235, 220)  # 부드러운 흰색
 
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # 이모티콘
+    "\U0001F300-\U0001F5FF"  # 기호 및 픽토그래프
+    "\U0001F680-\U0001F6FF"  # 교통 및 지도
+    "\U0001F1E0-\U0001F1FF"  # 국기
+    "\U0001F900-\U0001F9FF"  # 보충 이모지
+    "\U0001FA00-\U0001FA6F"  # 체스 기호
+    "\U0001FA70-\U0001FAFF"  # 기호 확장
+    "\U00002702-\U000027B0"  # Dingbats
+    "\U0000FE00-\U0000FE0F"  # Variation Selectors
+    "\U0000200D"             # Zero Width Joiner
+    "\U00002600-\U000026FF"  # 잡다 기호
+    "\U00002700-\U000027BF"  # Dingbats
+    "]+",
+    flags=re.UNICODE,
+)
+
 
 def _strip_emoji(text: str) -> str:
-    """이모지를 제거하여 맑은 고딕 폰트에서 깨지지 않도록 합니다."""
-    import re
-    emoji_pattern = re.compile(
-        "["
-        "\U0001F600-\U0001F64F"  # 이모티콘
-        "\U0001F300-\U0001F5FF"  # 기호 및 픽토그래프
-        "\U0001F680-\U0001F6FF"  # 교통 및 지도
-        "\U0001F1E0-\U0001F1FF"  # 국기
-        "\U0001F900-\U0001F9FF"  # 보충 이모지
-        "\U0001FA00-\U0001FA6F"  # 체스 기호
-        "\U0001FA70-\U0001FAFF"  # 기호 확장
-        "\U00002702-\U000027B0"  # Dingbats
-        "\U0000FE00-\U0000FE0F"  # Variation Selectors
-        "\U0000200D"             # Zero Width Joiner
-        "\U00002600-\U000026FF"  # 잡다 기호
-        "\U00002700-\U000027BF"  # Dingbats
-        "]+",
-        flags=re.UNICODE,
-    )
-    return emoji_pattern.sub("", text).strip()
+    """이모지를 제거하여 폰트에서 깨지지 않도록 합니다."""
+    return _EMOJI_PATTERN.sub("", str(text or "")).strip()
+
+
+def format_routine_title(text: str, max_chars: int = 28) -> str:
+    """긴 텍스트/캡션 인증 문구를 카드뉴스 타이틀 길이에 맞게 한 줄로 축약합니다."""
+    cleaned = _strip_emoji(text)
+    first_line = next((line.strip() for line in cleaned.splitlines() if line.strip()), "루틴 인증")
+    first_line = " ".join(first_line.split())
+    if len(first_line) <= max_chars:
+        return first_line
+    return first_line[: max_chars - 1].rstrip() + "…"
 
 
 def _load_background() -> Image.Image:
-    """배경 이미지를 로드하고 CARD_WIDTH x CARD_HEIGHT로 리사이즈합니다."""
-    bg = Image.open(BG_IMAGE_PATH).convert("RGBA")
-    bg = bg.resize((CARD_WIDTH, CARD_HEIGHT), Image.Resampling.LANCZOS)
-    return bg
+    """배경 이미지를 로드하고 리사이즈합니다. 파일이 없으면 기본 다크 배경으로 폴백합니다."""
+    try:
+        if BG_IMAGE_PATH and os.path.exists(BG_IMAGE_PATH):
+            bg = Image.open(BG_IMAGE_PATH).convert("RGBA")
+            return bg.resize((CARD_WIDTH, CARD_HEIGHT), Image.Resampling.LANCZOS)
+    except Exception:
+        pass
+    return Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (24, 22, 54, 255))
 
 
 def _apply_overlay(bg: Image.Image, opacity: int = 160) -> Image.Image:
@@ -78,7 +107,6 @@ def _get_font(bold: bool = False, size: int = 48) -> ImageFont.FreeTypeFont:
     try:
         return ImageFont.truetype(path, size)
     except Exception:
-        # 폴백: 기본 폰트
         return ImageFont.load_default()
 
 
@@ -95,23 +123,20 @@ def _draw_text_centered(
     if max_width is None:
         max_width = CARD_WIDTH - 120  # 좌우 패딩 60px
 
-    # 이모지 제거
     text = _strip_emoji(text)
 
-    # 텍스트 줄바꿈 처리
     lines = []
     for raw_line in text.split("\n"):
         if not raw_line.strip():
             lines.append("")
             continue
-        # 자동 줄바꿈 (글자 단위)
         wrapped = _wrap_text_by_pixel(draw, raw_line, font, max_width)
         lines.extend(wrapped)
 
     current_y = y
     for line in lines:
         if not line.strip():
-            current_y += font.size // 2
+            current_y += getattr(font, "size", 24) // 2
             continue
 
         bbox = draw.textbbox((0, 0), line, font=font)
@@ -137,7 +162,6 @@ def _wrap_text_by_pixel(
     if not text:
         return [""]
 
-    # 먼저 전체 텍스트가 max_width 안에 들어가는지 확인
     bbox = draw.textbbox((0, 0), text, font=font)
     if bbox[2] - bbox[0] <= max_width:
         return [text]
@@ -162,7 +186,6 @@ def _draw_decorative_line(draw: ImageDraw.ImageDraw, y: int, width: int = 400):
     """장식선을 그립니다."""
     x_start = (CARD_WIDTH - width) // 2
     x_end = x_start + width
-    # 그라데이션 효과를 위해 중앙이 밝은 선
     for offset in range(-1, 2):
         alpha = 255 if offset == 0 else 100
         draw.line(
@@ -175,12 +198,9 @@ def _draw_decorative_line(draw: ImageDraw.ImageDraw, y: int, width: int = 400):
 def _draw_diamond_separator(draw: ImageDraw.ImageDraw, y: int):
     """다이아몬드 장식 구분자를 그립니다."""
     cx = CARD_WIDTH // 2
-    # 좌측 선
     draw.line([(cx - 180, y), (cx - 20, y)], fill=COLOR_ACCENT, width=1)
-    # 다이아몬드
     diamond = [(cx, y - 6), (cx + 6, y), (cx, y + 6), (cx - 6, y)]
     draw.polygon(diamond, fill=COLOR_HIGHLIGHT)
-    # 우측 선
     draw.line([(cx + 20, y), (cx + 180, y)], fill=COLOR_ACCENT, width=1)
 
 
@@ -190,23 +210,18 @@ def create_intro_card() -> BytesIO:
     img = _apply_overlay(bg, opacity=140)
     draw = ImageDraw.Draw(img)
 
-    # 상단 라벨
     label_font = _get_font(bold=True, size=26)
     _draw_text_centered(draw, "- 산스 AI루틴클럽 Weekly Report -", 180, label_font, fill=COLOR_ACCENT)
 
-    # 장식선
     _draw_decorative_line(draw, 228, width=520)
 
-    # 메인 타이틀
     title_font = _get_font(bold=True, size=56)
     _draw_text_centered(draw, "루틴클럽,", 290, title_font, fill=COLOR_WHITE)
     _draw_text_centered(draw, "당신의 성장을", 365, title_font, fill=COLOR_WHITE)
     _draw_text_centered(draw, "응원합니다", 440, title_font, fill=COLOR_HIGHLIGHT)
 
-    # 다이아몬드 구분자
     _draw_diamond_separator(draw, 530)
 
-    # 하단 서브 텍스트
     sub_font = _get_font(bold=False, size=26)
     _draw_text_centered(
         draw,
@@ -216,7 +231,6 @@ def create_intro_card() -> BytesIO:
         fill=COLOR_SOFT_WHITE,
     )
 
-    # 하단 브랜딩
     brand_font = _get_font(bold=False, size=22)
     _draw_text_centered(draw, "꾸준함이 실력이 되는 곳", 900, brand_font, fill=(180, 180, 200, 180))
 
@@ -238,23 +252,19 @@ def create_routine_card(
     img = _apply_overlay(bg, opacity=170)
     draw = ImageDraw.Draw(img)
 
-    # 상단 번호 뱃지
     badge_font = _get_font(bold=True, size=24)
     _draw_text_centered(draw, f"ROUTINE #{card_number}", 120, badge_font, fill=COLOR_ACCENT)
 
-    # 구분선
     _draw_decorative_line(draw, 165, width=300)
 
-    # 루틴 이름 (하이라이트) - 이모지 제거됨
-    clean_routine_name = _strip_emoji(routine_name)
+    # 루틴 이름 (하이라이트) - 긴 텍스트/캡션도 타이틀 길이에 맞게 축약
+    clean_routine_name = format_routine_title(routine_name, max_chars=28)
     routine_font = _get_font(bold=True, size=44)
     y_after = _draw_text_centered(draw, clean_routine_name, 210, routine_font, fill=COLOR_HIGHLIGHT)
 
-    # 닉네임
     name_font = _get_font(bold=True, size=30)
     y_after = _draw_text_centered(draw, f"by {nickname}", y_after + 10, name_font, fill=COLOR_WHITE)
 
-    # 인증 횟수 (있는 경우)
     if auth_count > 0:
         count_font = _get_font(bold=False, size=24)
         y_after = _draw_text_centered(
@@ -265,10 +275,8 @@ def create_routine_card(
             fill=COLOR_ACCENT,
         )
 
-    # 다이아몬드 구분자
     _draw_diamond_separator(draw, y_after + 20)
 
-    # 요약 텍스트 (AI 생성 또는 캡션 기반)
     clean_summary = _strip_emoji(summary_text)
     summary_font = _get_font(bold=False, size=28)
     _draw_text_centered(
@@ -280,7 +288,6 @@ def create_routine_card(
         max_width=CARD_WIDTH - 180,
     )
 
-    # 하단 브랜딩
     brand_font = _get_font(bold=False, size=20)
     _draw_text_centered(draw, "산스 AI루틴클럽 | Weekly Highlights", 1000, brand_font, fill=(160, 160, 180, 160))
 
@@ -300,13 +307,11 @@ def create_outro_card(
     img = _apply_overlay(bg, opacity=140)
     draw = ImageDraw.Draw(img)
 
-    # 상단 라벨
     label_font = _get_font(bold=True, size=28)
     _draw_text_centered(draw, "- 이번 주도 함께 달려왔습니다 -", 160, label_font, fill=COLOR_ACCENT)
 
     _draw_decorative_line(draw, 210, width=500)
 
-    # 이번 주 성과 요약
     if total_auths > 0:
         stat_font = _get_font(bold=True, size=38)
         _draw_text_centered(
@@ -326,10 +331,8 @@ def create_outro_card(
             fill=COLOR_WHITE,
         )
 
-    # 다이아몬드 구분자
     _draw_diamond_separator(draw, 375)
 
-    # 다음 주 독려 메시지
     encourage_title_font = _get_font(bold=True, size=44)
     _draw_text_centered(draw, "다음 주도,", 420, encourage_title_font, fill=COLOR_WHITE)
     _draw_text_centered(draw, "함께 성장해요!", 480, encourage_title_font, fill=COLOR_HIGHLIGHT)
@@ -348,17 +351,15 @@ def create_outro_card(
         )
         _draw_text_centered(draw, default_msg, 560, msg_font, fill=COLOR_SOFT_WHITE)
 
-    # 하단 CTA
     cta_font = _get_font(bold=True, size=24)
     _draw_text_centered(
         draw,
-        "[봇 1:1 대화에서 사진+캡션으로 간편 인증!]",
+        "[봇 1:1 대화에서 사진+캡션 또는 /reg로 간편 인증!]",
         780,
         cta_font,
         fill=COLOR_ACCENT,
     )
 
-    # 하단 브랜딩
     brand_font = _get_font(bold=False, size=22)
     _draw_text_centered(draw, "- 산스 AI루틴클럽 -", 900, brand_font, fill=(180, 180, 200, 200))
     _draw_text_centered(draw, "꾸준함이 실력이 되는 곳", 935, brand_font, fill=(160, 160, 180, 160))
@@ -375,24 +376,7 @@ def generate_card_news(
     total_members: int = 0,
     next_week_msg: str = "",
 ) -> list:
-    """
-    카드뉴스 6장을 생성합니다.
-
-    Args:
-        top_routines: 상위 루틴 4개의 리스트. 각 항목은 dict:
-            {
-                "nickname": str,
-                "routine_name": str,
-                "summary": str,      # 루틴 요약 텍스트
-                "auth_count": int,    # 이번 주 인증 횟수
-            }
-        total_auths: 이번 주 총 인증 수
-        total_members: 참여 멤버 수
-        next_week_msg: 아웃트로 다음 주 독려 메시지
-
-    Returns:
-        list of BytesIO: 6장의 이미지 바이트 스트림
-    """
+    """카드뉴스 6장을 생성합니다."""
     cards = []
 
     # 1장: 인트로

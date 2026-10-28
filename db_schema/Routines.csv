@@ -1,4 +1,4 @@
-routine_id,user_id,routine_name,category,target_frequency,status,created_at
+routine_id,user_id,routine_name,category,target_frequency,status,created_at,current_streak
 "r-001","123456789","아침 6시 기상","Health","everyday","active","2026-03-09 10:05:00"
 "r-002","123456789","매일 책 10페이지","Study","everyday","active","2026-03-09 10:06:00"
 "r-003","987654321","저녁 조깅 30분","Health","weekdays","active","2026-03-08 14:35:00"

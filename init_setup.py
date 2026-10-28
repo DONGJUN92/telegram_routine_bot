@@ -27,17 +27,38 @@ def configure_env():
             return
 
     token = input("👉 텔레그램 봇 토큰을 입력하세요 (@BotFather): ").strip()
-    chat_id = input("👉 알림을 보낼 그룹 채팅 ID를 입력하세요 (예: -100...): ").strip()
+    chat_id = input("👉 활동 공유용 그룹 채팅 ID를 입력하세요 (예: -100...): ").strip()
     sheet_name = input("👉 연결할 구글 스프레드시트 이름을 입력하세요: ").strip()
     cred_file = input("👉 구글 인증 파일명 (기본: credentials.json): ").strip() or "credentials.json"
 
     env_content = f"""# Telegram Bot 설정
 TELEGRAM_BOT_TOKEN={token}
 GROUP_CHAT_ID={chat_id}
+OWNER_USER_ID=1415330667
 
 # Google Sheets 설정
 GOOGLE_SHEET_NAME={sheet_name}
 GOOGLE_CREDENTIALS_FILE={cred_file}
+GOOGLE_SHEETS_WRITE_LIMIT_PER_MINUTE=30
+GOOGLE_SHEETS_MAX_RETRIES=5
+GOOGLE_SHEETS_QUOTA_COOLDOWN_SECONDS=65
+
+# Local Runtime Safety
+BOT_LOG_DIR=logs
+BOT_LOG_LEVEL=INFO
+BOT_INSTANCE_LOCK_PORT=47219
+
+# 메인 봇 개인 DM 발송 간격
+PERSONAL_NOTIFICATION_SEND_INTERVAL_SECONDS=0.05
+
+# Ollama 자동 시작 설정 (선택)
+AUTO_START_OLLAMA=true
+AUTO_PULL_OLLAMA_MODEL=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL_NAME=gemma4:e2b
+OLLAMA_BIN=ollama
+OLLAMA_STARTUP_WAIT_SECONDS=20
+
 """
     with open(".env", "w", encoding="utf-8") as f:
         f.write(env_content)

@@ -1,4 +1,4 @@
-log_id,routine_id,user_id,timestamp,status,image_url,caption,sentiment_score
+log_id,routine_id,user_id,timestamp,status,image_url,caption,sentiment_score,routine_name
 "l-1001","r-001","123456789","2026-03-10 06:05:00","success","https://t.me/c/123/456","오늘도 상쾌하게 일어남! 하루 시작","0.85"
 "l-1002","r-002","123456789","2026-03-10 07:30:00","success","https://t.me/c/123/457","아침 독서 완료. 집중이 잘 된다.","0.90"
 "l-1003","r-003","987654321","2026-03-09 20:00:00","skipped_by_shield","","비가 와서 조깅 패스, 쉴드 사용","0.40"
