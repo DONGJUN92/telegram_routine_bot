@@ -27,6 +27,7 @@ CARD_HEIGHT = 1080
 
 _FONT_BOLD_CANDIDATES = (
     os.environ.get("CARD_FONT_BOLD_PATH", ""),
+    os.path.join(_BASE_DIR, "assests", "fonts", "NanumGothic-Bold.ttf"),
     "C:/Windows/Fonts/malgunbd.ttf",
     "/System/Library/Fonts/AppleSDGothicNeo.ttc",
     "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
@@ -34,13 +35,20 @@ _FONT_BOLD_CANDIDATES = (
 )
 _FONT_REGULAR_CANDIDATES = (
     os.environ.get("CARD_FONT_REGULAR_PATH", ""),
+    os.path.join(_BASE_DIR, "assests", "fonts", "NanumGothic-Regular.ttf"),
     "C:/Windows/Fonts/malgun.ttf",
     "/System/Library/Fonts/AppleSDGothicNeo.ttc",
     "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 )
-FONT_BOLD_PATH = next((p for p in _FONT_BOLD_CANDIDATES if p and os.path.exists(p)), "C:/Windows/Fonts/malgunbd.ttf")
-FONT_REGULAR_PATH = next((p for p in _FONT_REGULAR_CANDIDATES if p and os.path.exists(p)), "C:/Windows/Fonts/malgun.ttf")
+FONT_BOLD_PATH = next(
+    (p for p in _FONT_BOLD_CANDIDATES if p and os.path.exists(p)),
+    os.path.join(_BASE_DIR, "assests", "fonts", "NanumGothic-Bold.ttf"),
+)
+FONT_REGULAR_PATH = next(
+    (p for p in _FONT_REGULAR_CANDIDATES if p and os.path.exists(p)),
+    os.path.join(_BASE_DIR, "assests", "fonts", "NanumGothic-Regular.ttf"),
+)
 
 # 색상 팔레트
 COLOR_WHITE = (255, 255, 255, 255)

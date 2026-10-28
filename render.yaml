@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: sans-ai-routine-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GROUP_CHAT_ID
+        sync: false
+      - key: OWNER_USER_ID
+        value: "1415330667"
+      - key: GOOGLE_SHEET_NAME
+        sync: false
+      - key: GOOGLE_CREDENTIALS_FILE
+        value: /etc/secrets/credentials.json
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: PERSONAL_NOTIFICATION_SEND_INTERVAL_SECONDS
+        value: "0.05"
+      - key: GOOGLE_SHEETS_WRITE_LIMIT_PER_MINUTE
+        value: "30"
+      - key: GOOGLE_SHEETS_MAX_RETRIES
+        value: "5"
+      - key: GOOGLE_SHEETS_QUOTA_COOLDOWN_SECONDS
+        value: "65"

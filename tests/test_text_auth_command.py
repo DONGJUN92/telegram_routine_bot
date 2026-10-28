@@ -168,6 +168,118 @@ class AuthenticationAndAutoUserRegistrationTests(unittest.TestCase):
         self.assertIn("출석률 현황", reply_text)
         self.assertIn("오전 운동 30분 완료", reply_text)
 
+    def test_openrouter_free_model_ranking_and_sequential_fallback(self):
+        import ai_utils
+
+        sample_models = [
+            {
+                "id": "liquid/lfm-2.5-2.6b:free",
+                "name": "Liquid 2.6B",
+                "context_length": 65536,
+                "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            },
+            {
+                "id": "google/gemma-4-31b-it:free",
+                "name": "Gemma 4 31B",
+                "context_length": 262144,
+                "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]},
+            },
+            {
+                "id": "nvidia/nemotron-3.5-content-safety:free",
+                "name": "Safety Guard",
+                "context_length": 128000,
+                "architecture": {"input_modalities": ["text", "image"], "output_modalities": ["text"]},
+            },
+            {
+                "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "name": "Nemotron Ultra 550B",
+                "context_length": 1000000,
+                "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            },
+        ]
+
+        ai_utils._CACHED_FREE_MODELS = sample_models
+        ranked_text = asyncio.run(
+            ai_utils.fetch_ranked_free_models(require_vision=False, force_refresh=False)
+        )
+        # Safety 모델은 제외되고 Gemma 4 31B -> Nemotron Ultra 550B -> Liquid 2.6B 순으로 정렬
+        self.assertEqual(
+            ranked_text,
+            [
+                "google/gemma-4-31b-it:free",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "liquid/lfm-2.5-2.6b:free",
+            ],
+        )
+
+        # 1순위 모델이 429 에러를 반환할 때 2순위 모델로 자동 전환되어 성공하는지 검증
+        tried_models = []
+
+        class FakeResponse:
+            def __init__(self, status, payload):
+                self.status = status
+                self._payload = payload
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def json(self, content_type=None):
+                return self._payload
+
+        def fake_post(self_session, url, headers=None, json=None, timeout=None):
+            model_id = json["model"]
+            tried_models.append(model_id)
+            if len(tried_models) == 1:
+                return FakeResponse(429, {"error": {"message": "Rate limit exceeded"}})
+            return FakeResponse(
+                200,
+                {"choices": [{"message": {"content": "두 번째 모델에서 정상 생성된 코칭 응답입니다!"}}]},
+            )
+
+        async def fake_fetch_ranked(session=None, *, require_vision=False, force_refresh=True):
+            return ranked_text
+
+        with patch.object(ai_utils, "_get_openrouter_api_key", lambda: "sk-or-test-key"), \
+             patch.object(ai_utils, "fetch_ranked_free_models", fake_fetch_ranked), \
+             patch("aiohttp.ClientSession.post", fake_post):
+            result = asyncio.run(
+                ai_utils._call_openrouter_with_fallback(
+                    [{"role": "user", "content": "테스트"}],
+                    label="폴백 테스트",
+                )
+            )
+
+        self.assertEqual(
+            tried_models,
+            ["google/gemma-4-31b-it:free", "nvidia/nemotron-3-ultra-550b-a55b:free"],
+        )
+        self.assertEqual(result, "두 번째 모델에서 정상 생성된 코칭 응답입니다!")
+
+    def test_health_check_server_and_bundled_korean_fonts(self):
+        import os
+        import urllib.request
+        import card_news
+
+        self.assertTrue(os.path.exists(card_news.FONT_BOLD_PATH))
+        self.assertTrue(os.path.exists(card_news.FONT_REGULAR_PATH))
+        self.assertIn("NanumGothic", card_news.FONT_BOLD_PATH)
+
+        with patch.dict(os.environ, {"PORT": "0"}):
+            port = main.start_health_check_server()
+            try:
+                self.assertIsNotNone(port)
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as resp:
+                    self.assertEqual(resp.status, 200)
+                    self.assertIn(b'"status":"ok"', resp.read())
+                head_req = urllib.request.Request(f"http://127.0.0.1:{port}/health", method="HEAD")
+                with urllib.request.urlopen(head_req, timeout=5) as head_resp:
+                    self.assertEqual(head_resp.status, 200)
+            finally:
+                main.stop_health_check_server()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import random
@@ -23,15 +24,34 @@ _DOCUMENT = None
 _WORKSHEETS = {}
 
 
+def _resolve_credentials_client():
+    raw_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
+    if raw_json:
+        LOGGER.info("Authenticating Google Sheets via GOOGLE_CREDENTIALS_JSON env var")
+        return gspread.service_account_from_dict(json.loads(raw_json))
+
+    configured_file = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json").strip()
+    candidate_paths = [
+        configured_file,
+        "/etc/secrets/credentials.json",
+        "credentials.json",
+    ]
+    for path in candidate_paths:
+        if path and os.path.exists(path):
+            LOGGER.info("Authenticating Google Sheets via file: %s", path)
+            return gspread.service_account(filename=path)
+
+    return gspread.service_account(filename=configured_file or "credentials.json")
+
+
 def _get_document():
     global _DOCUMENT
     with _CONNECTION_LOCK:
         if _DOCUMENT is None:
             if not SHEET_NAME:
                 raise RuntimeError("GOOGLE_SHEET_NAME is not configured")
-            credentials_file = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json")
             LOGGER.info("Connecting to Google Sheets: %s", SHEET_NAME)
-            client = gspread.service_account(filename=credentials_file)
+            client = _resolve_credentials_client()
             _DOCUMENT = client.open(SHEET_NAME)
             LOGGER.info("Google Sheets connection established")
         return _DOCUMENT

@@ -1,13 +1,17 @@
 import asyncio
 import base64
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import logging
 import os
 import random
 import socket
+import threading
 import uuid
 import warnings
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
+
+import aiohttp
 
 from dotenv import load_dotenv
 from app_logging import configure_logging
@@ -93,9 +97,88 @@ _USER_REGISTRATION_LOCK = asyncio.Lock()
 _GROUP_SYNC_LOCK = asyncio.Lock()
 _BACKGROUND_TASKS = set()
 _INSTANCE_SOCKET = None
+_HEALTH_SERVER: ThreadingHTTPServer | None = None
 
 # 그룹방(GROUP_CHAT_ID)에서 감지된 멤버 캐시: {user_id: nickname}
 _KNOWN_GROUP_MEMBERS: dict[str, str] = {}
+
+
+class _HealthCheckHandler(BaseHTTPRequestHandler):
+    """Render Web Service 포트 바인딩 및 UptimeRobot(GET/HEAD) 핑 응답용 핸들러."""
+
+    def _send_ok(self, include_body: bool = True):
+        body = b'{"status":"ok","service":"sans-ai-routine-bot"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if include_body:
+            self.wfile.write(body)
+
+    def do_GET(self):
+        self._send_ok(include_body=True)
+
+    def do_HEAD(self):
+        self._send_ok(include_body=False)
+
+    def log_message(self, format, *args):
+        # 주기적인 핑 로그가 콘솔을 가득 채우지 않도록 생략
+        return
+
+
+def start_health_check_server() -> int | None:
+    """Render의 PORT 환경변수(또는 기본 헬스체크 포트)를 바인딩해 Web Service로 동작하게 합니다."""
+    global _HEALTH_SERVER
+    if _HEALTH_SERVER is not None:
+        return _HEALTH_SERVER.server_port
+
+    port_raw = os.environ.get("PORT", os.environ.get("HEALTH_CHECK_PORT", "")).strip()
+    if not port_raw:
+        return None
+    try:
+        port = int(port_raw)
+    except ValueError:
+        LOGGER.warning("Invalid PORT=%r; skipping health-check HTTP server", port_raw)
+        return None
+
+    try:
+        server = ThreadingHTTPServer(("0.0.0.0", port), _HealthCheckHandler)
+        thread = threading.Thread(target=server.serve_forever, name="health-check-http", daemon=True)
+        thread.start()
+        _HEALTH_SERVER = server
+        bound_port = server.server_port
+        LOGGER.info("Health-check HTTP server listening on 0.0.0.0:%s", bound_port)
+        return bound_port
+    except OSError as error:
+        LOGGER.warning("Could not bind health-check HTTP server on port %s: %s", port, error)
+        return None
+
+
+def stop_health_check_server():
+    global _HEALTH_SERVER
+    if _HEALTH_SERVER is not None:
+        try:
+            _HEALTH_SERVER.shutdown()
+            _HEALTH_SERVER.server_close()
+        except Exception:
+            pass
+        _HEALTH_SERVER = None
+
+
+async def self_keep_alive_job(context: ContextTypes.DEFAULT_TYPE):
+    """RENDER_EXTERNAL_URL이 설정된 경우 10분마다 자체 헬스체크 엔드포인트를 호출합니다."""
+    external_url = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if not external_url:
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{external_url}/health",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as _:
+                pass
+    except Exception as error:
+        LOGGER.debug("Self keep-alive ping failed: %s", error)
 
 
 def track_group_user(user) -> None:
@@ -1115,24 +1198,19 @@ def main():
         raise RuntimeError(f"Required configuration is missing: {', '.join(missing_settings)}")
 
     acquire_instance_lock()
+    start_health_check_server()
 
-    auto_start_ollama = os.environ.get("AUTO_START_OLLAMA", "true").lower() in ("1", "true", "yes", "y")
-    wait_seconds_str = os.environ.get("OLLAMA_STARTUP_WAIT_SECONDS", "20")
-    try:
-        startup_wait_seconds = int(wait_seconds_str)
-    except ValueError:
-        startup_wait_seconds = 20
-
-    if auto_start_ollama:
-        print("🤖 Ollama 자동 준비를 확인합니다...")
+    auto_check_ai = os.environ.get("AUTO_START_OLLAMA", "true").lower() in ("1", "true", "yes", "y")
+    if auto_check_ai:
+        print("🤖 OpenRouter AI (:free 모델) 준비 상태를 확인합니다...")
         try:
-            ollama_ready = asyncio.run(ensure_ollama_ready(wait_seconds=startup_wait_seconds))
-            if ollama_ready:
-                print("✅ Ollama 준비 완료")
+            ai_ready = asyncio.run(ensure_ollama_ready())
+            if ai_ready:
+                print("✅ OpenRouter AI 준비 완료")
             else:
-                print("⚠️ Ollama 자동 준비에 실패했습니다. 봇은 계속 실행되며 AI 기능만 제한될 수 있습니다.")
+                print("⚠️ OPENROUTER_API_KEY 미설정 또는 준비 실패. 봇은 계속 실행되며 AI 기능만 제한될 수 있습니다.")
         except Exception as e:
-            print(f"⚠️ Ollama 자동 준비 중 에러: {e}")
+            print(f"⚠️ OpenRouter AI 준비 확인 중 에러: {e}")
 
     app = Application.builder().token(TOKEN).build()
     app.add_error_handler(application_error_handler)
@@ -1218,6 +1296,14 @@ def main():
         job_kwargs=SCHEDULED_JOB_KWARGS,
     )
 
+    if os.environ.get("RENDER_EXTERNAL_URL", "").strip():
+        jq.run_repeating(
+            self_keep_alive_job,
+            interval=600,
+            first=120,
+            name="render_self_keep_alive",
+        )
+
     print("🤖 산스 AI루틴클럽 봇 가동 시작! (비동기, 출석률 정산, 월초 동기화·월말 브리핑 장착 완료)")
     app.run_polling(bootstrap_retries=-1)
 
@@ -1231,4 +1317,5 @@ if __name__ == "__main__":
         LOGGER.exception("Routine bot terminated during startup or polling")
         raise
     finally:
+        stop_health_check_server()
         release_instance_lock()
